@@ -1710,8 +1710,8 @@ function screenTeacherForm() {
         ${ICON.back} Back
       </button>
       <div class="login-form-icon">🎓</div>
-      <div class="login-form-title">Teacher Access Request</div>
-      <div class="login-form-sub">Enter your details and an approval request will be automatically emailed to the administrator. You'll get access once approved.</div>
+      <div class="login-form-title">Faculty Access</div>
+      <div class="login-form-sub">Already approved? Sign in with your school email below. New faculty can send an access request.</div>
       <div class="login-form-group">
         <label class="login-form-label">Full Name</label>
         <input class="login-form-input" id="teacher-name" type="text" placeholder="e.g. Ms. Johnson" autocomplete="name"/>
@@ -1725,10 +1725,13 @@ function screenTeacherForm() {
         <input class="login-form-input" id="teacher-admin-pin" type="password" inputmode="numeric" maxlength="4" placeholder="Leave blank if requesting approval" autocomplete="off"/>
       </div>
       ${state.loginError ? `<div style="color:var(--red);font-size:13px;font-weight:600;margin-bottom:10px;">⚠️ ${state.loginError}</div>` : ""}
-      <button class="login-submit-btn teacher-submit" id="teacher-submit-btn" onclick="requestTeacherAccess()">
-        🔐 Continue to Faculty Access
+      <button class="login-submit-btn" id="teacher-login-btn" onclick="loginTeacher()">
+        🎓 Sign In to Faculty Access
       </button>
-      <div class="login-privacy">📨 Faculty requests require approval. Administrators can use their allowlisted school email and admin PIN to enter immediately.</div>
+      <button class="login-submit-btn teacher-submit" id="teacher-submit-btn" onclick="requestTeacherAccess()">
+        📧 Send New Access Request
+      </button>
+      <div class="login-privacy">📨 Approved faculty sign in immediately. New requests require administrator approval. Administrators can use their allowlisted school email and admin PIN to enter immediately.</div>
     </div>
   </div>`;
 }
@@ -1842,6 +1845,75 @@ function screenProfile() {
 }
 
 /* ===== AUTH LOGIC ===== */
+
+async function loginTeacher() {
+  const name = document.getElementById("teacher-name")?.value.trim() || "";
+  const email = document.getElementById("teacher-email")?.value.trim().toLowerCase() || "";
+  const adminPin = document.getElementById("teacher-admin-pin")?.value.trim() || "";
+
+  state.loginError = "";
+  if (!name) { state.loginError = "Please enter your full name."; renderApp(); return; }
+  if (!email) { state.loginError = "Please enter your school email."; renderApp(); return; }
+
+  if (isAllowlistedAdmin(email) && adminPin === ADMIN_PIN) {
+    state.user = { id: "admin-preview-" + Date.now(), name, email, role: "teacher", status: "approved", adminPreview: true };
+    syncAdminFromUser(state.user);
+    loadSurveySubmissionState(state.user);
+    localStorage.setItem("brewster_user", JSON.stringify(state.user));
+    state.screen = "home";
+    renderApp("fade-in");
+    return;
+  }
+  if (adminPin) {
+    state.loginError = "The admin PIN is only valid with an authorized administrator email.";
+    renderApp();
+    return;
+  }
+  if (!sb) {
+    state.loginError = "Faculty sign-in is unavailable while the app is offline.";
+    renderApp();
+    return;
+  }
+
+  const { data, error } = await sb
+    .from("users")
+    .select("id,name,email,role,status,approval_token")
+    .eq("role", "teacher")
+    .eq("email", email)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    state.loginError = `Unable to check faculty access: ${error.message}`;
+    renderApp();
+    return;
+  }
+  if (!data) {
+    state.loginError = "No faculty request was found for this email. Use “Send New Access Request” below.";
+    renderApp();
+    return;
+  }
+  if (data.status === "pending") {
+    state.user = { id: data.id, name: data.name || name, email: data.email || email, role: "teacher", status: "pending", approvalToken: data.approval_token };
+    localStorage.setItem("brewster_user", JSON.stringify(state.user));
+    state.screen = "pending";
+    renderApp("fade-in");
+    return;
+  }
+  if (data.status !== "approved") {
+    state.loginError = "This faculty request was rejected. Please contact the administrator.";
+    renderApp();
+    return;
+  }
+
+  state.user = { id: data.id, name: data.name || name, email: data.email || email, role: "teacher", status: "approved", approvalToken: data.approval_token || null };
+  syncAdminFromUser(state.user);
+  loadSurveySubmissionState(state.user);
+  localStorage.setItem("brewster_user", JSON.stringify(state.user));
+  state.screen = "home";
+  renderApp("fade-in");
+}
 
 async function loginStudent() {
   const nameEl     = document.getElementById("student-name");
