@@ -1104,6 +1104,53 @@ ul { list-style: none; }
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.admin-dashboard { padding: 28px 32px 40px; max-width: 900px; }
+.admin-dashboard-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  margin-bottom: 20px;
+  border-radius: var(--r-lg);
+  color: white;
+  background: linear-gradient(135deg, var(--navy) 0%, var(--navy-dark) 100%);
+}
+.admin-dashboard-icon { font-size: 32px; }
+.admin-dashboard-title { font-size: 20px; font-weight: 900; }
+.admin-dashboard-sub { color: rgba(255,255,255,0.65); font-size: 13px; margin-top: 3px; }
+.admin-tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.admin-tool-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 112px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.admin-tool-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.admin-tool-icon { font-size: 30px; flex-shrink: 0; }
+.admin-tool-copy { display: flex; flex: 1; flex-direction: column; gap: 4px; padding-right: 28px; }
+.admin-tool-title { font-size: 15px; font-weight: 800; }
+.admin-tool-sub { color: var(--text-muted); font-size: 12px; line-height: 1.4; }
+.admin-tool-badge {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  color: var(--navy);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+.admin-tool-arrow { position: absolute; right: 14px; bottom: 12px; color: var(--text-muted); }
+.admin-tool-arrow svg { width: 16px; height: 16px; }
 
 /* Emergency Button */
 .emergency-btn-wrap {
@@ -2548,6 +2595,8 @@ ul { list-style: none; }
 .app-screen { -ms-overflow-style: none; scrollbar-width: none; }
 
 @media (max-width: 760px) {
+  .admin-dashboard { padding: 20px 16px 32px; }
+  .admin-tool-grid { grid-template-columns: 1fr; }
   .house-update-grid { grid-template-columns: 1fr 1fr; }
   .survey-action-row { flex-direction: column; }
   .results-grid { grid-template-columns: 1fr; }

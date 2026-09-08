@@ -627,14 +627,14 @@ const ICON = {
 /* ===== COMMON COMPONENTS ===== */
 
 function renderSidebar() {
-  const isStudent = state.user?.role === "student" && !hasAdminAccess();
+  const canUseAdminPanel = hasAdminAccess();
   const items = [
     { id: "home",            label: "Dashboard",        icon: ICON.home },
     { id: "house",           label: "House Standings",  icon: ICON.events },
     { id: "surveys",         label: "Surveys",          icon: "📋" },
     { id: "message",         label: "Message Ms. Ellie",icon: ICON.messages },
     { id: "report",          label: "Report a Problem", icon: "🤔" },
-    ...(!isStudent ? [{ id: "emergency-panel", label: "Emergency Panel", icon: "🔐" }] : []),
+    ...(canUseAdminPanel ? [{ id: "admin-panel", label: "Admin Panel", icon: "⚙️" }] : []),
   ];
   return `
   <aside class="sidebar">
@@ -717,11 +717,11 @@ function screenHome() {
     </div>`).join("");
 
   const adminCard = `
-    <div class="admin-card dash-third" onclick="navigate('emergency-panel')">
+    <div class="admin-card dash-third" onclick="navigate('admin-panel')">
       <div class="admin-icon">${adminAccess ? "🔐" : "🛡️"}</div>
       <div class="admin-text">
-        <div class="admin-title">${adminAccess ? "Emergency Panel" : "Staff Emergency Panel"}</div>
-        <div class="admin-sub">${adminAccess ? "Broadcast alerts to all students" : "Authorized personnel only"}</div>
+        <div class="admin-title">${adminAccess ? "Admin Panel" : "Staff Admin Panel"}</div>
+        <div class="admin-sub">${adminAccess ? "Manage school tools and updates" : "Authorized personnel only"}</div>
       </div>
       <div class="admin-badge">${adminAccess ? "STAFF" : "SECURE"}</div>
     </div>`;
@@ -1362,6 +1362,45 @@ function renderAdminOnlyScreen(title) {
       <div style="font-size:64px">🚫</div>
       <div style="font-size:22px;font-weight:900;color:var(--text);margin:16px 0">Access Restricted</div>
       <div style="color:var(--text-muted);max-width:360px;margin:0 auto;line-height:1.6">Only senior administrators can access this panel.</div>
+    </div>
+  </div>`;
+}
+
+function screenAdminDashboard() {
+  if (!hasAdminAccess()) return renderAdminOnlyScreen("Admin Panel");
+  const cards = [
+    { id: "house", icon: "🏆", title: "House Standings", sub: "Publish competition points and see live totals.", badge: "LIVE" },
+    { id: "emergency-panel", icon: "📡", title: "Broadcast Center", sub: "Send announcements and urgent alerts to users.", badge: "STAFF" },
+    ...(hasSeniorAdminAccess() ? [
+      { id: "admin-approvals", icon: "✅", title: "Teacher Approvals", sub: "Review and approve faculty access requests.", badge: "ADMIN" },
+      { id: "admin-messages", icon: "📥", title: "Message Inbox", sub: "Review anonymous messages sent to Ms. Ellie.", badge: "ADMIN" },
+    ] : []),
+    { id: "surveys", icon: "📊", title: "Survey Results", sub: "View response analytics and feedback.", badge: "STAFF" },
+  ];
+
+  return `
+  <div class="app-screen slide-in">
+    ${renderTopBar("Admin Panel")}
+    <div class="admin-dashboard">
+      <div class="admin-dashboard-hero">
+        <div class="admin-dashboard-icon">⚙️</div>
+        <div>
+          <div class="admin-dashboard-title">Staff tools</div>
+          <div class="admin-dashboard-sub">Manage Brewster App updates from one place.</div>
+        </div>
+      </div>
+      <div class="admin-tool-grid">
+        ${cards.map(card => `
+          <button class="admin-tool-card" onclick="navigate('${card.id}')">
+            <span class="admin-tool-icon">${card.icon}</span>
+            <span class="admin-tool-copy">
+              <span class="admin-tool-title">${card.title}</span>
+              <span class="admin-tool-sub">${card.sub}</span>
+            </span>
+            <span class="admin-tool-badge">${card.badge}</span>
+            <span class="admin-tool-arrow">${ICON.arrow}</span>
+          </button>`).join("")}
+      </div>
     </div>
   </div>`;
 }
@@ -2088,6 +2127,7 @@ function getScreenHTML(anim = "slide-in") {
     case "pending":          return screenPending();
     case "approval-success": return screenApprovalSuccess();
     case "home":             return screenHome();
+    case "admin-panel":      return screenAdminDashboard();
     case "trivia":           return screenTrivia();
     case "house":            return screenHouse();
     case "surveys":          return screenSurveys();
