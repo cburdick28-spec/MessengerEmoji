@@ -202,6 +202,11 @@ const state = {
   surveyResultsModal: { open: false, surveyId: null },
   surveyResultsFilter: { from: "", to: "" },
   surveyRealtimeChannel: null,
+  housePointsRealtimeChannel: null,
+  housePointsUpdatedAt: null,
+  houseUpdateLoading: false,
+  houseUpdateError: "",
+  houseUpdateSuccess: "",
 
   messageSent: false,
   messageError: "",
@@ -956,14 +961,45 @@ function screenHouse() {
     <div class="house-screen">
       <div class="house-chart-card">
         <div class="house-chart-title">Current Standings</div>
-        <div class="house-chart-sub">Updated weekly every Monday · Season Points</div>
+        <div class="house-chart-sub">Live season points · updates after each competition</div>
         <div class="house-chart">${chartRows}</div>
       </div>
       <div class="section-title">Upcoming House Events</div>
       <div class="event-list">${eventsHTML}</div>
-    </div>
+      ${hasAdminAccess() ? renderHouseUpdatePanel() : ""}
+      </div>
 
   </div>`;
+}
+
+function renderHouseUpdatePanel() {
+  const statusHTML = state.houseUpdateError
+    ? `<div class="house-update-status error" role="alert">⚠️ ${state.houseUpdateError}</div>`
+    : state.houseUpdateSuccess
+      ? `<div class="house-update-status success" role="status">✅ ${state.houseUpdateSuccess}</div>`
+      : "";
+  const updatedHTML = state.housePointsUpdatedAt
+    ? `Last updated ${new Date(state.housePointsUpdatedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`
+    : "Changes appear live for everyone viewing the app.";
+
+  return `
+    <div class="house-update-card">
+      <div class="house-update-title">📡 Record a competition result</div>
+      <div class="house-update-sub">Add points earned by each house after a competition. Students will see the updated standings live.</div>
+      <input class="form-input house-update-name" id="house-competition-name" type="text" maxlength="80" placeholder="Competition name (optional)" />
+      <div class="house-update-grid">
+        ${HOUSES.map(h => `
+          <label class="house-update-field">
+            <span>${h.icon} ${h.name} House</span>
+            <input class="form-input" id="house-points-${h.name.toLowerCase()}" type="number" min="0" step="1" value="0" inputmode="numeric" aria-label="${h.name} House points earned" />
+          </label>`).join("")}
+      </div>
+      ${statusHTML}
+      <button class="submit-btn house-update-btn" onclick="submitHouseCompetition()" ${state.houseUpdateLoading ? "disabled" : ""}>
+        ${state.houseUpdateLoading ? "Saving result…" : "Publish standings update"}
+      </button>
+      <div class="house-update-meta">${updatedHTML}</div>
+    </div>`;
 }
 
 /* --- SURVEYS --- */
@@ -1645,11 +1681,15 @@ function screenTeacherForm() {
         <label class="login-form-label">School Email</label>
         <input class="login-form-input" id="teacher-email" type="email" placeholder="you@brewstermadrid.com" autocomplete="email"/>
       </div>
+      <div class="login-form-group">
+        <label class="login-form-label">Admin PIN <span style="color:var(--text-muted);font-weight:500">(admins only)</span></label>
+        <input class="login-form-input" id="teacher-admin-pin" type="password" inputmode="numeric" maxlength="4" placeholder="Leave blank if requesting approval" autocomplete="off"/>
+      </div>
       ${state.loginError ? `<div style="color:var(--red);font-size:13px;font-weight:600;margin-bottom:10px;">⚠️ ${state.loginError}</div>` : ""}
       <button class="login-submit-btn teacher-submit" id="teacher-submit-btn" onclick="requestTeacherAccess()">
-        📧 Send Approval Request
+        🔐 Continue to Faculty Access
       </button>
-      <div class="login-privacy">📨 An approval email will be sent automatically to <strong>cburdick28@brewstermadrid.com</strong>. No action needed on your end.</div>
+      <div class="login-privacy">📨 Faculty requests require approval. Administrators can use their allowlisted school email and admin PIN to enter immediately.</div>
     </div>
   </div>`;
 }
@@ -1820,6 +1860,7 @@ async function loginStudent() {
 async function requestTeacherAccess() {
   const nameEl  = document.getElementById("teacher-name");
   const emailEl = document.getElementById("teacher-email");
+  const adminPin = document.getElementById("teacher-admin-pin")?.value.trim() || "";
   const name    = nameEl?.value.trim()  || "";
   const email   = emailEl?.value.trim().toLowerCase() || "";
 
@@ -1828,7 +1869,30 @@ async function requestTeacherAccess() {
   if (!email) { state.loginError = "Please enter your school email."; renderApp(); return; }
 
   const btn = document.getElementById("teacher-submit-btn");
-  if (btn) { btn.textContent = "Sending request…"; btn.disabled = true; }
+  const adminBypass = isAllowlistedAdmin(email) && adminPin === ADMIN_PIN;
+  if (adminPin && !adminBypass) {
+    state.loginError = "The admin PIN is only valid with an authorized administrator email.";
+    renderApp();
+    return;
+  }
+  if (btn) { btn.textContent = adminBypass ? "Opening faculty access…" : "Sending request…"; btn.disabled = true; }
+
+  if (adminBypass) {
+    state.user = {
+      id: "admin-preview-" + Date.now(),
+      name,
+      email,
+      role: "teacher",
+      status: "approved",
+      adminPreview: true,
+    };
+    syncAdminFromUser(state.user);
+    loadSurveySubmissionState(state.user);
+    localStorage.setItem("brewster_user", JSON.stringify(state.user));
+    state.screen = "home";
+    renderApp("fade-in");
+    return;
+  }
 
   // If this teacher already exists, sign in (approved) or return to pending (pending).
   if (sb) {
@@ -2099,6 +2163,7 @@ function bindEvents() {
   } else {
     stopSurveyRealtime();
   }
+  startHousePointsRealtime();
 
   if (state.screen === "admin-messages" && hasSeniorAdminAccess() && !state.adminMessagesLoaded && !state.adminMessagesLoading) {
     loadAdminMessages();
@@ -2649,6 +2714,81 @@ async function loadHousePoints() {
     chartColor: row.chart_color,
     icon:       row.icon,
   }));
+  state.housePointsUpdatedAt = data.reduce((latest, row) => {
+    if (!row.updated_at) return latest;
+    return !latest || new Date(row.updated_at) > new Date(latest) ? row.updated_at : latest;
+  }, state.housePointsUpdatedAt);
+  if (state.screen === "house" || state.screen === "home" || state.screen === "profile") {
+    renderApp();
+  }
+}
+
+async function submitHouseCompetition() {
+  if (!hasAdminAccess()) return;
+  const nameEl = document.getElementById("house-competition-name");
+  const updates = HOUSES.map(h => {
+    const input = document.getElementById(`house-points-${h.name.toLowerCase()}`);
+    const points = Number(input?.value || 0);
+    return { house: h, points };
+  });
+
+  if (updates.some(({ points }) => !Number.isInteger(points) || points < 0)) {
+    state.houseUpdateError = "Enter whole numbers of zero or more for each house.";
+    state.houseUpdateSuccess = "";
+    renderApp();
+    return;
+  }
+  if (!updates.some(({ points }) => points > 0)) {
+    state.houseUpdateError = "Add points for at least one house before publishing.";
+    state.houseUpdateSuccess = "";
+    renderApp();
+    return;
+  }
+  if (!sb) {
+    state.houseUpdateError = "Standings are unavailable while the app is offline.";
+    state.houseUpdateSuccess = "";
+    renderApp();
+    return;
+  }
+
+  state.houseUpdateLoading = true;
+  state.houseUpdateError = "";
+  state.houseUpdateSuccess = "";
+  renderApp();
+
+  const results = await Promise.all(updates
+    .filter(({ points }) => points > 0)
+    .map(({ house, points }) => sb.from("house_points")
+      .update({ points: house.pts + points, updated_at: new Date().toISOString() })
+      .eq("house_name", house.name)));
+  const failed = results.find(result => result.error);
+  if (failed) {
+    state.houseUpdateError = `Could not publish the update: ${failed.error.message}`;
+    state.houseUpdateLoading = false;
+    renderApp();
+    return;
+  }
+
+  await loadHousePoints();
+  state.houseUpdateLoading = false;
+  state.houseUpdateSuccess = nameEl?.value.trim()
+    ? `${nameEl.value.trim()} published. Standings are now live.`
+    : "Standings update published and shared live.";
+  renderApp();
+}
+
+function startHousePointsRealtime() {
+  if (!sb || state.housePointsRealtimeChannel) return;
+  try {
+    state.housePointsRealtimeChannel = sb
+      .channel("house-points-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "house_points" }, () => {
+        loadHousePoints();
+      })
+      .subscribe();
+  } catch (err) {
+    console.warn("House standings realtime unavailable:", err);
+  }
 }
 
 async function loadBroadcasts() {

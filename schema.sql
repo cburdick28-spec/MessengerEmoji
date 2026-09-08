@@ -142,5 +142,9 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
+  CREATE POLICY "Public update house points" ON house_points FOR UPDATE USING (true) WITH CHECK (true);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
   CREATE POLICY "Public read broadcasts" ON broadcasts FOR SELECT USING (true);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
